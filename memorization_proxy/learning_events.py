@@ -810,7 +810,8 @@ def main():
         # # evaluate on test set
         # test_tacc = validate(test_loader, model, criterion, args)
 
-        scheduler.step()
+        if 'scheduler' in locals() and scheduler is not None:
+            scheduler.step()
 
         acc = top1.avg
         all_result["train_ta"].append(acc)
@@ -834,7 +835,7 @@ def main():
             # 'init_weight': initalization
         }, is_SA_best=is_best_sa, pruning=state, save_path=args.save_dir)
         """
-
+        """
         save_checkpoint(
             {
                 "result": all_result,
@@ -842,8 +843,29 @@ def main():
                 "state_dict": model.state_dict(),
                 "best_sa": best_sa,
                 "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
+                #"scheduler": scheduler.state_dict(),
             },
+            
+            is_SA_best=is_best_sa,
+            pruning=state,
+            save_path=args.save_dir,
+        )
+        """
+
+        save_dict = {
+            "result": all_result,
+            "epoch": epoch + 1,
+            "state_dict": model.state_dict(),
+            "best_sa": best_sa,
+            "optimizer": optimizer.state_dict(),
+        }
+        
+        # scheduler가 정의된 경우에만 포함
+        if 'scheduler' in locals() and scheduler is not None:
+            save_dict["scheduler"] = scheduler.state_dict()
+            
+        save_checkpoint(
+            save_dict,
             is_SA_best=is_best_sa,
             pruning=state,
             save_path=args.save_dir,
@@ -881,18 +903,23 @@ def main():
                 args.unlearn,args.num_indexes_to_replace, args.group_index,args.mem_proxy, args.mem),
         )
     else:
+        save_dict = {
+            "state_dict": model.state_dict(),
+            "best_sa": best_sa,
+            "optimizer": optimizer.state_dict(),
+        }
+        
+        if 'scheduler' in locals() and scheduler is not None:
+            save_dict["scheduler"] = scheduler.state_dict()
+            
         save_checkpoint(
-            {
-                "state_dict": model.state_dict(),
-                "best_sa": best_sa,
-                "optimizer": optimizer.state_dict(),
-                "scheduler": scheduler.state_dict(),
-            },
+            save_dict,
             is_SA_best=is_best_sa,
             pruning=state,
             save_path=args.save_dir,
             filename='{}_original_{}_bs{}_lr{}_seed{}_epochs{}_learning_events.pth.tar'.format(
-            args.dataset,args.arch,args.batch_size, args.lr, args.seed, args.epochs),
+                args.dataset, args.arch, args.batch_size, args.lr, args.seed, args.epochs
+            ),
         )
 
     # report result
