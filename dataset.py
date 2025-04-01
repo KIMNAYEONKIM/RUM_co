@@ -1011,8 +1011,8 @@ def cifar10_dataloaders_idx(
     print("10000 images for testing\t no normalize applied in data_transform")
 
     data_dir = data_dir + '/cifar10'
-    train_set = CIFAR10(data_dir, train=True, transform=train_transform, download=False)
-    test_set = CIFAR10(data_dir, train=False, transform=test_transform, download=False)
+    train_set = CIFAR10(data_dir, train=True, transform=train_transform, download=True)
+    test_set = CIFAR10(data_dir, train=False, transform=test_transform, download=True)
 
     train_set.targets = np.array(train_set.targets)
     test_set.targets = np.array(test_set.targets)

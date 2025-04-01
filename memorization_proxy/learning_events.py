@@ -36,7 +36,7 @@ import wandb
 
 best_sa = 0
 
-
+"""
 def wandb_init(args):
     if args.wandb_group_name is None:
         args.wandb_group_name = f"{args.dataset}_{args.arch}_{args.forget_class}_{args.num_to_forget}"
@@ -51,6 +51,37 @@ def wandb_init(args):
 
     logger.config.update(args)
     return logger
+"""
+
+def wandb_init(args):
+    # 기본 그룹 이름 지정 (학습 전용일 경우도 커버)
+    if not hasattr(args, "wandb_group_name") or args.wandb_group_name is None:
+        args.wandb_group_name = f"{args.dataset}_{args.arch}"
+
+    # run 이름 생성도 상황에 맞게 분기
+    if hasattr(args, "class_to_replace") and hasattr(args, "num_indexes_to_replace"):
+        run_name = "{}_{}_forget_{}_num{}_seed{}".format(
+            args.dataset, args.arch,
+            args.class_to_replace, args.num_indexes_to_replace, args.seed)
+    else:
+        run_name = "{}_{}_train_seed{}".format(
+            args.dataset, args.arch, args.seed)
+
+    # wandb 실행
+    if args.wandb_run_id is not None:
+        logger = wandb.init(id=args.wandb_run_id, resume="must")
+    else:
+        logger = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            mode=args.wandb_mode,
+            group=args.wandb_group_name)
+        logger.name = run_name
+
+    logger.config.update(args)
+    return logger
+
+
 def wandb_finish(logger, files=None):
     if files is not None:
         for file in files:
@@ -98,6 +129,7 @@ def main():
         val_loader,
         test_loader,
         marked_loader,
+        train_idx # 추가해 준거임
     ) = setup_model_dataset(args)
     if args.unlearn is not None:
         args.dataset = original_dataset
@@ -665,8 +697,11 @@ def main():
         top1 = utils.AverageMeter()
 
         epoch_confidence_time = 0
-        for i, (images, labels, unique_ids) in enumerate(train_loader):  # replace train_loader with unlearn_train_loader for post-unlearning proxy tracking
-            images, labels, unique_ids = images.to(args.device), labels.to(args.device), unique_ids.to(args.device)
+        for i, (images, labels) in enumerate(train_loader):  # replace train_loader with unlearn_train_loader for post-unlearning proxy tracking
+            unique_ids = None  # 추가 한거임 for 문데 unique_ids 있었음 
+            #images, labels, unique_ids = images.to(args.device), labels.to(args.device), unique_ids.to(args.device)
+            images, labels = images.to(args.device), labels.to(args.device)
+            unique_ids = unique_ids.to(args.device) if unique_ids is not None else None
             model.train()
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -736,28 +771,30 @@ def main():
             softmax_probs = torch.softmax(outputs, dim=1)
             _, predicted = torch.max(outputs, 1)
 
-            # Track accuracy and softmax confidence for each example
-            for idx, unique_id in enumerate(unique_ids):
-                unique_id = unique_id.item()
-
-                correct_class_confidence = softmax_probs[idx][labels[idx]].item()
-                softmax_confidences[unique_id].append(correct_class_confidence)
-
-                p_max = softmax_probs[idx].max().item()
-                p_max_values[unique_id].append(p_max)
-
-                p_e = calculate_negative_entropy(softmax_probs[idx])
-                p_e_values[unique_id].append(p_e)
-
-                acc_i = 1 if predicted[idx] == labels[idx] else 0
-                acc_values[unique_id].append(acc_i)
-
-                # Compute the average softmax confidence for the correct class up until this step
-                avg_confidence = np.mean(softmax_confidences[unique_id])
-                avg_p_max = np.mean(p_max_values[unique_id])
-                avg_p_e = np.mean(p_e_values[unique_id])
-                avg_acc = np.mean(acc_values[unique_id])
-                learning_events[unique_id] = [epoch, avg_confidence, avg_p_max, avg_p_e, avg_acc]
+            #if 조건문 추가
+            if unique_ids is not None : 
+                # Track accuracy and softmax confidence for each example
+                for idx, unique_id in enumerate(unique_ids):
+                    unique_id = unique_id.item()
+                    
+                    correct_class_confidence = softmax_probs[idx][labels[idx]].item()
+                    softmax_confidences[unique_id].append(correct_class_confidence)
+                    
+                    p_max = softmax_probs[idx].max().item()
+                    p_max_values[unique_id].append(p_max)
+                    
+                    p_e = calculate_negative_entropy(softmax_probs[idx])
+                    p_e_values[unique_id].append(p_e)
+                    
+                    acc_i = 1 if predicted[idx] == labels[idx] else 0
+                    acc_values[unique_id].append(acc_i)
+                    
+                    # Compute the average softmax confidence for the correct class up until this step
+                    avg_confidence = np.mean(softmax_confidences[unique_id])
+                    avg_p_max = np.mean(p_max_values[unique_id])
+                    avg_p_e = np.mean(p_e_values[unique_id])
+                    avg_acc = np.mean(acc_values[unique_id])
+                    learning_events[unique_id] = [epoch, avg_confidence, avg_p_max, avg_p_e, avg_acc]
 
             end_con = time.time()
             epoch_confidence_time += (end_con - start_con)
